@@ -16,3 +16,19 @@ Detailed setup instructions will be added here. Key initial steps:
     Alternatively, run frontend and backend separately:
     - Frontend: `npm run dev` in `/frontend` (usually on port 3000)
     - Backend: `npm run dev` in `/backend` (usually on port 5000)
+
+##IMPORTANT
+
+The app currently sends video files (.mp4) directly to WhisperX/Replicate
+FFmpeg conversion is NOT currently being used 
+
+This approach works because:
+WhisperX/Replicate can handle video files directly - Modern speech recognition services like WhisperX can extract audio from video files automatically
+It's more efficient - No need for server-side processing, faster uploads
+Less server resources - No CPU-intensive FFmpeg operations on your server
+
+FFmpeg is available but not used. For future updates consider adding FFmpeg:
+
+- to reduce file sizes before sending to Replicate (to save bandwidth/costs)
+- to standardize audio format (e.g., always convert to 16kHz mono WAV for optimal recognition)
+- to extract only audio to reduce processing time on Replicate's end.
