@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+*.log
+*.env
+uploads/
+dist/
+build/
+output/ # For generated files like zip
+
+# IDE specific
+.vscode/
+.idea/
+
+# OS specific
+.DS_Store
+Thumbs.db

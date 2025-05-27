@@ -1,0 +1,44 @@
+version: '3.8'
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000" # Default for Vite
+    volumes:
+      - ./frontend:/app # Mount entire frontend for dev
+      - /app/node_modules # Anonymous volume for node_modules to prevent local override
+    environment:
+      - NODE_ENV=development
+      # For Vite, ensure server listens on 0.0.0.0 if accessed from outside container network directly
+      # Vite's default dev server (npm run dev) usually handles this.
+    # command: npm run dev # Command is usually in Dockerfile
+
+  backend:
+    build: ./backend
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+      - ./backend/uploads:/app/uploads # If using local uploads and serving them
+    environment:
+      - NODE_ENV=development
+      - PORT=5000
+    env_file:
+      - ./backend/.env # Load backend .env variables
+
+  # Example DB service (PostgreSQL) - Uncomment and configure if needed
+  # db:
+  #   image: postgres:13
+  #   restart: always
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   environment:
+  #     POSTGRES_USER: user
+  #     POSTGRES_PASSWORD: password
+  #     POSTGRES_DB: whisperx_db
+
+# volumes: # Uncomment if using named volumes like postgres_data
+#   postgres_data:
