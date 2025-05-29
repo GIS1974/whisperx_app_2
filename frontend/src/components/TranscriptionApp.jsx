@@ -39,16 +39,16 @@ const TranscriptionApp = () => {
     const file = event.target.files[0];
     if (file) {
       console.log(`📁 File selected: ${file.name} (${formatFileSize(file.size)})`);
-      
+
       // Estimate processing time
       const estimatedMinutes = Math.ceil(file.size / (1024 * 1024) / 10); // ~10MB per minute
       console.log(`⏱️ Estimated processing time: ${estimatedMinutes < 5 ? '2-5' : `${estimatedMinutes}-${estimatedMinutes + 10}`} minutes`);
-      
+
       const validation = validateFile(file);
       if (validation.warnings.length > 0) {
         console.log(` ⚠️ File validation warnings:`, validation.warnings);
       }
-      
+
       setSelectedFile(file);
       setFileValidation(validation);
       setTranscriptionResult(null);
@@ -83,8 +83,14 @@ const TranscriptionApp = () => {
       setError('');
       setProgress(0);
       setCurrentStep('Starting transcription...');
-      
+
       console.log('🚀 Starting transcription process...');
+
+      // Set API token before starting transcription
+      replicateClient.setApiToken(apiToken);
+      if (!apiToken || apiToken === 'YOUR_REPLICATE_API_TOKEN_HERE') {
+        throw new Error('Please set a valid Replicate API token');
+      }
 
       // Check if file needs chunking
       if (fileValidation && fileValidation.needsChunking) {
@@ -116,7 +122,7 @@ const TranscriptionApp = () => {
     while (retryCount <= maxRetries && !result) {
       try {
         const retryText = retryCount > 0 ? ` (retry ${retryCount}/${maxRetries})` : '';
-        
+
         // Skip FFmpeg conversion entirely - use original file
         setCurrentStep(`Preparing file for transcription${retryText}...`);
         setProgress(10);
@@ -162,7 +168,7 @@ const TranscriptionApp = () => {
       } catch (error) {
         retryCount++;
         console.warn(`⚠️ Direct processing failed (attempt ${retryCount}): ${error.message}`);
-        
+
         if (retryCount <= maxRetries) {
           console.log(`🔄 Retrying direct processing in 3 seconds...`);
           setCurrentStep(`Transcription failed, retrying in 3 seconds (${retryCount}/${maxRetries})...`);
@@ -189,7 +195,7 @@ const TranscriptionApp = () => {
       // Split file into chunks
       setCurrentStep('Splitting file into chunks...');
       setProgress(10);
-      
+
       const chunks = await splitFileIntoChunks(selectedFile, 25 * 1024 * 1024); // 25MB chunks
       console.log(`📦 Created ${chunks.length} chunks`);
 
@@ -200,7 +206,7 @@ const TranscriptionApp = () => {
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
         const chunkProgress = 10 + (i / totalChunks) * 80; // Progress from 10% to 90%
-        
+
         let chunkResult = null;
         let retryCount = 0;
         const maxRetries = 3;
@@ -211,12 +217,12 @@ const TranscriptionApp = () => {
             const retryText = retryCount > 0 ? ` (retry ${retryCount}/${maxRetries})` : '';
             setCurrentStep(`Processing chunk ${i + 1}/${totalChunks} (${formatFileSize(chunk.size)})${retryText}...`);
             setProgress(chunkProgress);
-            
+
             console.log(`🔄 Processing chunk ${i + 1}/${totalChunks}${retryText}: ${chunk.file.name}`);
 
             // Create blob from chunk file
             const chunkBlob = new Blob([chunk.file], { type: chunk.file.type });
-            
+
             // Start transcription for this chunk
             const prediction = await replicateClient.startTranscription(chunkBlob, options);
             console.log(`✅ Chunk ${i + 1} transcription started${retryText}: ${prediction.id}`);
@@ -235,7 +241,7 @@ const TranscriptionApp = () => {
           } catch (error) {
             retryCount++;
             console.warn(`⚠️ Chunk ${i + 1} failed (attempt ${retryCount}): ${error.message}`);
-            
+
             if (retryCount <= maxRetries) {
               console.log(`🔄 Retrying chunk ${i + 1} in 2 seconds...`);
               await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
@@ -252,7 +258,7 @@ const TranscriptionApp = () => {
       // Combine all chunk results
       setCurrentStep('Combining chunk results...');
       setProgress(95);
-      
+
       const combinedResult = combineChunkResults(chunkResults);
       console.log(`🔗 Combined ${chunkResults.length} chunks into final result`);
 
@@ -332,7 +338,7 @@ const TranscriptionApp = () => {
       </div>
 
       {/* File Upload Section */}
-      <div 
+      <div
         className="file-upload-section"
         onDrop={handleDrop}
         onDragOver={handleDragOver}
@@ -385,8 +391,8 @@ const TranscriptionApp = () => {
 
       {/* Action Buttons */}
       <div className="action-buttons">
-        <button 
-          onClick={startTranscription} 
+        <button
+          onClick={startTranscription}
           disabled={!selectedFile || isProcessing}
           className="primary-button"
         >

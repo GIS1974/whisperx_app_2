@@ -13,10 +13,11 @@ const SUPPORTED_VIDEO_TYPES = [
 
 const ALL_SUPPORTED_TYPES = [...SUPPORTED_AUDIO_TYPES, ...SUPPORTED_VIDEO_TYPES];
 
-// File size limits
+// File size limits (adjusted for base64 encoding overhead)
+const MAX_DIRECT_SIZE = 35 * 1024 * 1024; // 35MB direct processing (becomes ~47MB after base64)
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB (Replicate API limit)
 const CHUNK_SIZE = 25 * 1024 * 1024; // 25MB chunks
-const WARNING_SIZE = 50 * 1024 * 1024; // 50MB warning threshold
+const WARNING_SIZE = 30 * 1024 * 1024; // 30MB warning threshold
 
 /**
  * Validate a file for transcription
@@ -43,6 +44,10 @@ export function validateFile(file) {
     result.needsChunking = true;
     result.estimatedChunks = Math.ceil(file.size / CHUNK_SIZE);
     result.warnings.push(`File is ${formatFileSize(file.size)}. Will be split into ${result.estimatedChunks} chunks.`);
+  } else if (file.size > MAX_DIRECT_SIZE) {
+    result.needsChunking = true;
+    result.estimatedChunks = Math.ceil(file.size / CHUNK_SIZE);
+    result.warnings.push(`File is ${formatFileSize(file.size)}. Too large for direct processing (max ${formatFileSize(MAX_DIRECT_SIZE)}). Will be split into ${result.estimatedChunks} chunks.`);
   } else if (file.size > WARNING_SIZE) {
     result.warnings.push(`Large file (${formatFileSize(file.size)}). Processing may take longer.`);
   }
@@ -66,11 +71,11 @@ export function validateFile(file) {
  */
 export function formatFileSize(bytes) {
   if (bytes === 0) return '0 Bytes';
-  
+
   const k = 1024;
   const sizes = ['Bytes', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  
+
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
@@ -109,5 +114,6 @@ export default {
   SUPPORTED_VIDEO_TYPES,
   ALL_SUPPORTED_TYPES,
   MAX_FILE_SIZE,
+  MAX_DIRECT_SIZE,
   CHUNK_SIZE
 };

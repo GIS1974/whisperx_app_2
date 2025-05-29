@@ -16,7 +16,7 @@ const upload = multer({
 
 // Enable CORS for all routes
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
+  origin: ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:3001', 'http://127.0.0.1:3001'],
   methods: ['GET', 'POST'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
@@ -45,10 +45,30 @@ app.post('/api/replicate/predictions', upload.single('audio_file'), async (req, 
       return res.status(400).json({ error: 'Audio file is required' });
     }
 
-    console.log(`📁 Processing file: ${req.file.originalname} (${(req.file.size / 1024 / 1024).toFixed(2)} MB)`);
+    const fileSizeMB = req.file.size / 1024 / 1024;
+    console.log(`📁 Processing file: ${req.file.originalname} (${fileSizeMB.toFixed(2)} MB)`);
+    console.log(`📄 File type: ${req.file.mimetype}`);
+
+    // Check file size limits (base64 encoding increases size by ~33%)
+    const estimatedBase64Size = req.file.size * 1.33;
+    const estimatedBase64SizeMB = estimatedBase64Size / 1024 / 1024;
+
+    if (estimatedBase64SizeMB > 50) {
+      console.warn(`⚠️ File too large after base64 encoding: ${estimatedBase64SizeMB.toFixed(2)} MB`);
+      return res.status(413).json({
+        error: 'File too large',
+        message: `File size after encoding would be ${estimatedBase64SizeMB.toFixed(2)} MB. Please use a smaller file or split into chunks.`,
+        originalSize: fileSizeMB.toFixed(2),
+        encodedSize: estimatedBase64SizeMB.toFixed(2)
+      });
+    }
+
+    console.log(`🔄 Converting to base64 (estimated size: ${estimatedBase64SizeMB.toFixed(2)} MB)...`);
 
     // Convert file buffer to base64
     const base64Audio = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+
+    console.log(`✅ Base64 conversion complete (actual size: ${(base64Audio.length / 1024 / 1024).toFixed(2)} MB)`);
 
     // Prepare payload for Replicate
     const payload = {
@@ -71,13 +91,23 @@ app.post('/api/replicate/predictions', upload.single('audio_file'), async (req, 
       }
     };
 
+    console.log(`📤 Sending request to Replicate API...`);
+    console.log(`🔧 Request details: ${JSON.stringify({
+      version: payload.version,
+      inputKeys: Object.keys(payload.input),
+      audioFileSize: `${(base64Audio.length / 1024 / 1024).toFixed(2)} MB`,
+      language: payload.input.language
+    }, null, 2)}`);
+
     // Make request to Replicate API
     const response = await axios.post('https://api.replicate.com/v1/predictions', payload, {
       headers: {
         'Authorization': `Token ${replicate_token}`,
         'Content-Type': 'application/json'
       },
-      timeout: 300000 // 5 minute timeout for large files
+      timeout: 300000, // 5 minute timeout for large files
+      maxContentLength: 100 * 1024 * 1024, // 100MB max content length
+      maxBodyLength: 100 * 1024 * 1024 // 100MB max body length
     });
 
     console.log(`✅ Replicate API response: ${response.data.id}`);
@@ -85,6 +115,16 @@ app.post('/api/replicate/predictions', upload.single('audio_file'), async (req, 
 
   } catch (error) {
     console.error('❌ Proxy error:', error.message);
+
+    // Log more detailed error information
+    if (error.response) {
+      console.error('📊 Error details:', {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        headers: error.response.headers,
+        data: error.response.data
+      });
+    }
 
     if (error.response) {
       // Replicate API error
