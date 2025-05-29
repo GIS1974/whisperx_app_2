@@ -169,10 +169,22 @@ const TranscriptionApp = () => {
         retryCount++;
         console.warn(`⚠️ Direct processing failed (attempt ${retryCount}): ${error.message}`);
 
+        // Check for specific Replicate errors that benefit from longer waits
+        const isReplicateInterruption = error.message.includes('interrupted') ||
+                                      error.message.includes('PA') ||
+                                      error.message.includes('server error') ||
+                                      error.message.includes('502');
+
         if (retryCount <= maxRetries) {
-          console.log(`🔄 Retrying direct processing in 3 seconds...`);
-          setCurrentStep(`Transcription failed, retrying in 3 seconds (${retryCount}/${maxRetries})...`);
-          await new Promise(resolve => setTimeout(resolve, 3000)); // Wait 3 seconds before retry
+          // Exponential backoff with longer waits for Replicate interruptions
+          const baseDelay = isReplicateInterruption ? 10000 : 5000; // 10s for interruptions, 5s for others
+          const delay = baseDelay * Math.pow(2, retryCount - 1); // Exponential backoff
+          const maxDelay = 60000; // Cap at 60 seconds
+          const actualDelay = Math.min(delay, maxDelay);
+
+          console.log(`🔄 Retrying direct processing in ${actualDelay / 1000} seconds...`);
+          setCurrentStep(`Transcription failed, retrying in ${actualDelay / 1000}s (${retryCount}/${maxRetries})...`);
+          await new Promise(resolve => setTimeout(resolve, actualDelay));
         } else {
           console.error(`❌ Direct processing failed after ${maxRetries} retries`);
           throw new Error(`Transcription failed after ${maxRetries} retries: ${error.message}`);
@@ -196,7 +208,7 @@ const TranscriptionApp = () => {
       setCurrentStep('Splitting file into chunks...');
       setProgress(10);
 
-      const chunks = await splitFileIntoChunks(selectedFile, 25 * 1024 * 1024); // 25MB chunks
+      const chunks = await splitFileIntoChunks(selectedFile, 15 * 1024 * 1024); // 15MB chunks for better reliability
       console.log(`📦 Created ${chunks.length} chunks`);
 
       const chunkResults = [];
@@ -211,7 +223,7 @@ const TranscriptionApp = () => {
         let retryCount = 0;
         const maxRetries = 3;
 
-        // Retry loop for each chunk
+        // Retry loop for each chunk with exponential backoff
         while (retryCount <= maxRetries && !chunkResult) {
           try {
             const retryText = retryCount > 0 ? ` (retry ${retryCount}/${maxRetries})` : '';
@@ -242,9 +254,23 @@ const TranscriptionApp = () => {
             retryCount++;
             console.warn(`⚠️ Chunk ${i + 1} failed (attempt ${retryCount}): ${error.message}`);
 
+            // Check for specific Replicate errors that benefit from longer waits
+            const isReplicateInterruption = error.message.includes('interrupted') ||
+                                          error.message.includes('PA') ||
+                                          error.message.includes('server error') ||
+                                          error.message.includes('502');
+
             if (retryCount <= maxRetries) {
-              console.log(`🔄 Retrying chunk ${i + 1} in 2 seconds...`);
-              await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before retry
+              // Exponential backoff with longer waits for Replicate interruptions
+              const baseDelay = isReplicateInterruption ? 10000 : 3000; // 10s for interruptions, 3s for others
+              const delay = baseDelay * Math.pow(2, retryCount - 1); // Exponential backoff
+              const maxDelay = 60000; // Cap at 60 seconds
+              const actualDelay = Math.min(delay, maxDelay);
+
+              console.log(`🔄 Retrying chunk ${i + 1} in ${actualDelay / 1000} seconds...`);
+              setCurrentStep(`Chunk ${i + 1} failed, retrying in ${actualDelay / 1000}s (${retryCount}/${maxRetries})...`);
+
+              await new Promise(resolve => setTimeout(resolve, actualDelay));
             } else {
               console.error(`❌ Chunk ${i + 1} failed after ${maxRetries} retries`);
               throw new Error(`Chunk ${i + 1} failed after ${maxRetries} retries: ${error.message}`);

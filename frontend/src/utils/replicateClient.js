@@ -134,14 +134,14 @@ class ReplicateClient {
    * @returns {Promise<Object>} - Final prediction result
    */
   async pollTranscription(predictionId, onUpdate = null) {
-    const pollInterval = 2000; // 2 seconds
+    const pollInterval = 3000; // 3 seconds (reduced frequency to be gentler on Replicate)
     const maxPollTime = 30 * 60 * 1000; // 30 minutes
     const startTime = Date.now();
 
     while (Date.now() - startTime < maxPollTime) {
       try {
         const prediction = await this.getTranscriptionStatus(predictionId);
-        
+
         if (onUpdate) {
           onUpdate(prediction);
         }
@@ -158,7 +158,7 @@ class ReplicateClient {
 
         // Handle interrupted predictions (Replicate server issues)
         if (prediction.status === 'interrupted') {
-          throw new Error('Prediction interrupted by Replicate server (will retry automatically)');
+          throw new Error('Transcription failed: Prediction interrupted; please retry (code: PA)');
         }
 
         if (prediction.status === 'canceled') {

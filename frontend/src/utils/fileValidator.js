@@ -13,11 +13,11 @@ const SUPPORTED_VIDEO_TYPES = [
 
 const ALL_SUPPORTED_TYPES = [...SUPPORTED_AUDIO_TYPES, ...SUPPORTED_VIDEO_TYPES];
 
-// File size limits (adjusted for base64 encoding overhead)
-const MAX_DIRECT_SIZE = 35 * 1024 * 1024; // 35MB direct processing (becomes ~47MB after base64)
+// File size limits (adjusted for base64 encoding overhead and Replicate stability)
+const MAX_DIRECT_SIZE = 20 * 1024 * 1024; // 20MB direct processing (becomes ~27MB after base64)
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB (Replicate API limit)
-const CHUNK_SIZE = 25 * 1024 * 1024; // 25MB chunks
-const WARNING_SIZE = 30 * 1024 * 1024; // 30MB warning threshold
+const CHUNK_SIZE = 15 * 1024 * 1024; // 15MB chunks (smaller for better reliability)
+const WARNING_SIZE = 15 * 1024 * 1024; // 15MB warning threshold
 
 /**
  * Validate a file for transcription
