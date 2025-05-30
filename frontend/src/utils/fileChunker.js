@@ -3,6 +3,45 @@
  */
 
 /**
+ * Chunk audio file using binary chunking (safe for audio formats)
+ * @param {File} audioFile - Audio file to chunk
+ * @param {number} chunkSize - Size of each chunk in bytes
+ * @returns {Promise<Array>} - Array of audio chunks
+ */
+async function chunkAudioFile(audioFile, chunkSize) {
+  console.log(`🎵 Chunking audio file: ${(audioFile.size / 1024 / 1024).toFixed(2)} MB`);
+
+  const chunks = [];
+  const totalChunks = Math.ceil(audioFile.size / chunkSize);
+
+  for (let i = 0; i < totalChunks; i++) {
+    const start = i * chunkSize;
+    const end = Math.min(start + chunkSize, audioFile.size);
+    const chunkBlob = audioFile.slice(start, end);
+
+    // Create a new File object for the chunk
+    const chunkFile = new File(
+      [chunkBlob],
+      `${audioFile.name.replace(/\.[^/.]+$/, '')}_audio_chunk_${i + 1}_of_${totalChunks}.${audioFile.name.split('.').pop()}`,
+      { type: audioFile.type }
+    );
+
+    chunks.push({
+      index: i,
+      file: chunkFile,
+      size: chunkFile.size,
+      startTime: i,
+      endTime: i + 1,
+      duration: `chunk ${i + 1}/${totalChunks}`
+    });
+
+    console.log(`🎵 Audio chunk ${i + 1}/${totalChunks}: ${(chunkFile.size / 1024 / 1024).toFixed(2)} MB`);
+  }
+
+  return chunks;
+}
+
+/**
  * Extract audio from video file for transcription
  * @param {File} file - Video file to extract audio from
  * @returns {Promise<File>} - Audio file
@@ -88,26 +127,19 @@ export async function splitFileIntoChunks(file, chunkSize = 15 * 1024 * 1024) {
   const isVideo = file.type.startsWith('video/');
 
   if (isVideo) {
-    console.log(`🎬 Video file detected - WhisperX can process video files directly`);
-    console.log(`📄 Processing video file directly without audio extraction`);
+    console.log(`🎬 Video file detected - processing directly (${(file.size / 1024 / 1024).toFixed(1)}MB)`);
+    console.log(`📄 WhisperX will handle video format and size validation`);
 
-    // Process video file directly - WhisperX handles video files well
-    // Check if file needs chunking based on size
-    if (file.size <= chunkSize) {
-      // Small enough to process as single chunk
-      return [{
-        index: 0,
-        file: file,
-        size: file.size,
-        startTime: 0,
-        endTime: 1,
-        duration: 'full'
-      }];
-    } else {
-      // Large video file - use binary chunking
-      console.log(`📦 Large video file - splitting into chunks`);
-      // Fall through to binary chunking logic below
-    }
+    // Always try to process video files directly - let Replicate API handle size limits
+    // This avoids corruption from chunking and audio extraction issues
+    return [{
+      index: 0,
+      file: file,
+      size: file.size,
+      startTime: 0,
+      endTime: 1,
+      duration: 'full'
+    }];
   }
 
   // For audio files or large video files, use binary chunking

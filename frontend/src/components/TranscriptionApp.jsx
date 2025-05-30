@@ -146,7 +146,16 @@ const TranscriptionApp = () => {
 
     } catch (error) {
       console.error('❌ Transcription error:', error);
-      setError(error.message);
+
+      // Provide helpful error messages based on error type
+      let errorMessage = error.message;
+      if (error.message.includes('413') || error.message.includes('File too large')) {
+        errorMessage = `File too large for Replicate API. Your file is ${(selectedFile.size / 1024 / 1024).toFixed(1)}MB. Try:\n\n• Use a shorter video clip (under 20MB)\n• Convert to audio format first\n• Use a video compression tool\n• Split the video into smaller segments`;
+      } else if (error.message.includes('duration') || error.message.includes('ffprobe')) {
+        errorMessage = `Video format issue. Try:\n\n• Convert to MP4 format\n• Use a different video file\n• Extract audio manually and upload as MP3/WAV`;
+      }
+
+      setError(errorMessage);
       setCurrentStep('');
       setProgress(0);
     } finally {
