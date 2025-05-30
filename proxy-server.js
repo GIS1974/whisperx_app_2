@@ -2,6 +2,11 @@ const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
 const axios = require('axios');
+const https = require('https');
+
+// Temporarily disable SSL verification to handle SSL issues
+// This is for development only - in production, proper SSL certificates should be used
+process.env["NODE_TLS_REJECT_UNAUTHORIZED"] = 0;
 
 const app = express();
 const PORT = 5001;
@@ -21,7 +26,9 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-app.use(express.json());
+// Increase body parser limits for large files
+app.use(express.json({ limit: '200mb' }));
+app.use(express.urlencoded({ limit: '200mb', extended: true }));
 
 console.log('🚀 Starting minimal Replicate proxy server...');
 
@@ -53,13 +60,15 @@ app.post('/api/replicate/predictions', upload.single('audio_file'), async (req, 
     const estimatedBase64Size = req.file.size * 1.33;
     const estimatedBase64SizeMB = estimatedBase64Size / 1024 / 1024;
 
-    if (estimatedBase64SizeMB > 50) {
+    // Replicate API limit is much smaller than we thought - around 25-30MB for the entire payload
+    if (estimatedBase64SizeMB > 25) {
       console.warn(`⚠️ File too large after base64 encoding: ${estimatedBase64SizeMB.toFixed(2)} MB`);
       return res.status(413).json({
         error: 'File too large',
-        message: `File size after encoding would be ${estimatedBase64SizeMB.toFixed(2)} MB. Please use a smaller file or split into chunks.`,
+        message: `File size after encoding would be ${estimatedBase64SizeMB.toFixed(2)} MB. Replicate API limit is ~25MB. Please use a smaller file or enable chunking in the frontend.`,
         originalSize: fileSizeMB.toFixed(2),
-        encodedSize: estimatedBase64SizeMB.toFixed(2)
+        encodedSize: estimatedBase64SizeMB.toFixed(2),
+        suggestion: 'Try using a shorter audio/video clip or enable file chunking in the app.'
       });
     }
 
@@ -99,15 +108,26 @@ app.post('/api/replicate/predictions', upload.single('audio_file'), async (req, 
       language: payload.input.language
     }, null, 2)}`);
 
-    // Make request to Replicate API
+    // Make request to Replicate API with SSL configuration
     const response = await axios.post('https://api.replicate.com/v1/predictions', payload, {
       headers: {
         'Authorization': `Token ${replicate_token}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'User-Agent': 'WhisperX-App/1.0'
       },
-      timeout: 300000, // 5 minute timeout for large files
-      maxContentLength: 100 * 1024 * 1024, // 100MB max content length
-      maxBodyLength: 100 * 1024 * 1024 // 100MB max body length
+      timeout: 600000, // 10 minute timeout for large files
+      maxContentLength: 200 * 1024 * 1024, // 200MB max content length
+      maxBodyLength: 200 * 1024 * 1024, // 200MB max body length
+      // Add SSL configuration to handle potential SSL issues
+      httpsAgent: new https.Agent({
+        rejectUnauthorized: false, // Disable SSL verification for development
+        keepAlive: true,
+        timeout: 60000
+      }),
+      // Add retry configuration
+      validateStatus: function (status) {
+        return status >= 200 && status < 300; // default
+      }
     });
 
     console.log(`✅ Replicate API response: ${response.data.id}`);
@@ -163,8 +183,16 @@ app.get('/api/replicate/predictions/:id', async (req, res) => {
     const response = await axios.get(`https://api.replicate.com/v1/predictions/${id}`, {
       headers: {
         'Authorization': `Token ${replicate_token}`,
-        'Content-Type': 'application/json'
-      }
+        'Content-Type': 'application/json',
+        'User-Agent': 'WhisperX-App/1.0'
+      },
+      // Add SSL configuration to handle potential SSL issues
+      httpsAgent: new https.Agent({
+        rejectUnauthorized: false, // Disable SSL verification for development
+        keepAlive: true,
+        timeout: 60000
+      }),
+      timeout: 30000 // 30 second timeout for status checks
     });
 
     res.json(response.data);

@@ -14,10 +14,10 @@ const SUPPORTED_VIDEO_TYPES = [
 const ALL_SUPPORTED_TYPES = [...SUPPORTED_AUDIO_TYPES, ...SUPPORTED_VIDEO_TYPES];
 
 // File size limits (adjusted for base64 encoding overhead and Replicate stability)
-const MAX_DIRECT_SIZE = 20 * 1024 * 1024; // 20MB direct processing (becomes ~27MB after base64)
-const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB (Replicate API limit)
-const CHUNK_SIZE = 15 * 1024 * 1024; // 15MB chunks (smaller for better reliability)
-const WARNING_SIZE = 15 * 1024 * 1024; // 15MB warning threshold
+const MAX_DIRECT_SIZE = 50 * 1024 * 1024; // 50MB direct processing - try larger files first
+const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB total file size limit (will be chunked)
+const CHUNK_SIZE = 15 * 1024 * 1024; // 15MB chunks (becomes ~20MB after base64)
+const WARNING_SIZE = 30 * 1024 * 1024; // 30MB warning threshold
 
 /**
  * Validate a file for transcription
@@ -40,14 +40,15 @@ export function validateFile(file) {
   }
 
   // Check file size and determine chunking needs
+  const isVideo = file.type.startsWith('video/');
+
   if (file.size > MAX_FILE_SIZE) {
-    result.needsChunking = true;
-    result.estimatedChunks = Math.ceil(file.size / CHUNK_SIZE);
-    result.warnings.push(`File is ${formatFileSize(file.size)}. Will be split into ${result.estimatedChunks} chunks.`);
+    result.errors.push(`File is too large (${formatFileSize(file.size)}). Maximum supported size is ${formatFileSize(MAX_FILE_SIZE)}. Please use a smaller file.`);
   } else if (file.size > MAX_DIRECT_SIZE) {
+    // Force chunking for files larger than MAX_DIRECT_SIZE (both audio and video)
     result.needsChunking = true;
     result.estimatedChunks = Math.ceil(file.size / CHUNK_SIZE);
-    result.warnings.push(`File is ${formatFileSize(file.size)}. Too large for direct processing (max ${formatFileSize(MAX_DIRECT_SIZE)}). Will be split into ${result.estimatedChunks} chunks.`);
+    result.warnings.push(`File is ${formatFileSize(file.size)}. Too large for direct processing (max ${formatFileSize(MAX_DIRECT_SIZE)}). Will be split into ${result.estimatedChunks} chunks for processing.`);
   } else if (file.size > WARNING_SIZE) {
     result.warnings.push(`Large file (${formatFileSize(file.size)}). Processing may take longer.`);
   }

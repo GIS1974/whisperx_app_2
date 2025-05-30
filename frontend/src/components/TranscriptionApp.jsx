@@ -3,6 +3,7 @@ import { REPLICATE_API_TOKEN } from '../config/apiConfig';
 import ReplicateClient from '../utils/replicateClient';
 import { validateFile, formatFileSize } from '../utils/fileValidator';
 import { splitFileIntoChunks, combineChunkResults } from '../utils/fileChunker';
+import { getOptimalSettings, WHISPERX_PRESETS } from '../config/whisperxConfig';
 
 const TranscriptionApp = () => {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -13,6 +14,7 @@ const TranscriptionApp = () => {
   const [transcriptionResult, setTranscriptionResult] = useState(null);
   const [error, setError] = useState('');
   const [apiToken, setApiToken] = useState(REPLICATE_API_TOKEN);
+  const [useDirectAPI, setUseDirectAPI] = useState(false);
   const fileInputRef = useRef(null);
 
   // Initialize Replicate client
@@ -48,6 +50,23 @@ const TranscriptionApp = () => {
       if (validation.warnings.length > 0) {
         console.log(` ⚠️ File validation warnings:`, validation.warnings);
       }
+
+      // Get optimal WhisperX settings for this file
+      const fileInfo = {
+        size: file.size,
+        type: file.type,
+        estimatedSpeakers: 1, // Default to single speaker
+        audioQuality: 'medium' // Default quality assumption
+      };
+
+      const optimalSettings = getOptimalSettings(fileInfo, 'balanced');
+      console.log(`🎯 Applied optimal WhisperX settings:`, optimalSettings);
+
+      // Update options with optimal settings
+      setOptions(prevOptions => ({
+        ...prevOptions,
+        ...optimalSettings
+      }));
 
       setSelectedFile(file);
       setFileValidation(validation);
@@ -91,6 +110,28 @@ const TranscriptionApp = () => {
       if (!apiToken || apiToken === 'YOUR_REPLICATE_API_TOKEN_HERE') {
         throw new Error('Please set a valid Replicate API token');
       }
+
+      // Use manual toggle or auto-detect proxy availability
+      let finalUseDirectAPI = useDirectAPI;
+      if (!useDirectAPI) {
+        try {
+          const proxyHealthCheck = await fetch('http://localhost:5001/health', { timeout: 3000 });
+          if (!proxyHealthCheck.ok) {
+            finalUseDirectAPI = true;
+            console.log('🔄 Proxy server not responding, switching to direct API mode');
+          } else {
+            console.log('✅ Proxy server available, using proxy mode');
+          }
+        } catch (error) {
+          finalUseDirectAPI = true;
+          console.log('🔄 Proxy server not available, switching to direct API mode');
+        }
+      } else {
+        console.log('🌐 Manual direct API mode enabled');
+      }
+
+      console.log(`🔧 Setting API mode: ${finalUseDirectAPI ? 'Direct API' : 'Proxy Server'}`);
+      replicateClient.setDirectAPIMode(finalUseDirectAPI);
 
       // Check if file needs chunking
       if (fileValidation && fileValidation.needsChunking) {
@@ -363,6 +404,25 @@ const TranscriptionApp = () => {
         </button>
       </div>
 
+      {/* API Mode Selection */}
+      <div className="api-mode-section">
+        <label>
+          <input
+            type="checkbox"
+            checked={useDirectAPI}
+            onChange={(e) => setUseDirectAPI(e.target.checked)}
+            disabled={isProcessing}
+          />
+          Use Direct API (bypass proxy server)
+        </label>
+        <small style={{display: 'block', color: '#666', marginTop: '5px'}}>
+          {useDirectAPI
+            ? '🌐 Direct API mode: Calls Replicate API directly (may have CORS issues)'
+            : '🔄 Proxy mode: Uses local proxy server on port 5001'
+          }
+        </small>
+      </div>
+
       {/* File Upload Section */}
       <div
         className="file-upload-section"
@@ -444,9 +504,76 @@ const TranscriptionApp = () => {
     </div>
   );
 
+  // Helper function to convert seconds to SRT time format
+  const timeSecondsToSRT = (seconds) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    const milliseconds = Math.floor((seconds % 1) * 1000);
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')},${milliseconds.toString().padStart(3, '0')}`;
+  };
+
+  // Helper function to convert seconds to VTT time format
+  const timeSecondsToVTTCustom = (timeInSeconds) => {
+    const hours = Math.floor(timeInSeconds / 3600);
+    const minutes = Math.floor((timeInSeconds % 3600) / 60);
+    const seconds = Math.floor(timeInSeconds % 60);
+    const milliseconds = Math.floor((timeInSeconds * 1000) % 1000);
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(milliseconds).padStart(3, '0')}`;
+  };
+
   function downloadTranscription(format) {
-    // This function will be implemented to download the transcription in different formats
-    console.log(`Downloading transcription as ${format.toUpperCase()}`);
+    if (!transcriptionResult || !transcriptionResult.segments || transcriptionResult.segments.length === 0) {
+      alert('No transcription data available to download.');
+      return;
+    }
+
+    const segments = transcriptionResult.segments;
+    let content = '';
+    let filename = `transcription_${Date.now()}.${format}`;
+    let mimeType = 'text/plain';
+
+    switch (format) {
+      case 'txt':
+        content = segments.map(segment => segment.text.trim()).join(' ');
+        mimeType = 'text/plain';
+        break;
+
+      case 'srt':
+        content = segments.map((segment, index) => {
+          const startTime = timeSecondsToSRT(segment.start);
+          const endTime = timeSecondsToSRT(segment.end);
+          return `${index + 1}\n${startTime} --> ${endTime}\n${segment.text.trim()}\n`;
+        }).join('\n');
+        mimeType = 'application/x-subrip';
+        break;
+
+      case 'vtt':
+        content = 'WEBVTT\n\n' + segments.map(segment => {
+          const startTime = timeSecondsToVTTCustom(segment.start);
+          const endTime = timeSecondsToVTTCustom(segment.end);
+          return `${startTime} --> ${endTime}\n${segment.text.trim()}\n`;
+        }).join('\n');
+        mimeType = 'text/vtt';
+        break;
+
+      default:
+        alert('Unsupported format');
+        return;
+    }
+
+    // Create and trigger download
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    console.log(`✅ Downloaded transcription as ${format.toUpperCase()}: ${filename}`);
   }
 };
 
