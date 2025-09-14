@@ -1,27 +1,18 @@
-// frontend/src/App.js
 import React from 'react';
-import { BrowserRouter as Router, Route, Routes, Link } from 'react-router-dom';
-import HomePage from './pages/HomePage.jsx';
-import UploadPage from './pages/UploadPage.jsx';
-import PlayerPage from './pages/PlayerPage.jsx';
+import TranscriptionApp from './components/TranscriptionApp';
 import './styles/global.css';
 
 function App() {
   return (
-    <Router>
-      <div className="app-container"> {/* Changed class name */}
-        <nav>
-          <Link to="/">Home</Link>
-          <Link to="/upload">Upload & Transcribe</Link>
-        </nav>
-
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/upload" element={<UploadPage />} />
-          <Route path="/player/:jobId" element={<PlayerPage />} /> {/* Changed to jobId */}
-        </Routes>
-      </div>
-    </Router>
+    <div className="app">
+      <header className="app-header">
+        <h1>WhisperX Transcription Tool</h1>
+        <p>Upload audio/video files and get high-quality transcriptions with precise timestamps</p>
+      </header>
+      <main className="main-content">
+        <TranscriptionApp />
+      </main>
+    </div>
   );
 }
 

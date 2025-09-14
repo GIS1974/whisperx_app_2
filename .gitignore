@@ -14,3 +14,5 @@ output/ # For generated files like zip
 # OS specific
 .DS_Store
 Thumbs.db
+
+GUI/
